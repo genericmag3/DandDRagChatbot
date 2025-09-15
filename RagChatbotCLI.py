@@ -1,68 +1,58 @@
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
-from langchain_ollama.llms import OllamaLLM
+from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
+from langchain.prompts import PromptTemplate
+from langchain.chains import RetrievalQA
+from langchain.schema.output_parser import StrOutputParser
 from termcolor import colored
 import emoji as moji
+import streamlit as st
 
-
+# Initialize vector store
 vector_store = Chroma(
     collection_name="notes",
     persist_directory="./chrome_langchain_db",
     embedding_function=OllamaEmbeddings(model="mxbai-embed-large")
 )
-    
+
 retriever = vector_store.as_retriever(
     search_kwargs={"k": 10}
 )
 
+# Set up model
 model = OllamaLLM(model="phi4:14b")
 model.temperature = .6
 
-template = """
-You are an expert in answering questions about a Dungeons and Dragons campaign described in provided documents. The provided documents describe a campaign where the main protaganists are Brocc, Evryn, and Gwendolyn(Gwen).
+#Title streamlit chat window
+st.title("D&D Q&A Chatbot 🧙‍♂️")
 
-Here are the relevant documents with a date and title from the character Brocc's perspective (sometimes in first person and sometimes in third person): {notes}
-    
-Here is the question to answer. Base your answer only off of the provided documents, and no other extraineous material: {question}
-"""
-prompt = ChatPromptTemplate.from_template(template, model=model)
+# Set up retriever in streamlit app
+st.session_state.retriever = retriever
 
+user_question = st.text_input("Ask a question about the campaign...")
 
-chain = prompt | model 
-
-
-from datetime import datetime
-
-print(moji.emojize(colored("\n This is your D&D adventure Q&A bot :man_mage:. I take strucutred D&D notes as input and output answers to questions with references to specific sesssion note entries. This bot is a work in progress so make sure to read answers carfully and check note references for accuracy. Input 'q' to exit chatbot.\n", "green")))
-
-while True:
-    current_date = datetime.now()
-    user_input = input(colored("Ask a question about the campaign: ", "green"))
-
-    if user_input.lower() == "q":
-        print(colored("\n I hope I proved useful. Don't forget to 'get his ass'.\n", "green"))
-        break
-
-    # Perform a similarity search in the vector database
-    notes = retriever.invoke(user_input)
-    
-    # Generate a response using the language model
-    resp = chain.invoke(
-        {
-            "question": user_input,
-            "notes": notes,
-            "current_date": current_date,
-        }
-    )
-    #print("\n______________________________________________________\n")
-    
+if user_question:
+    with st.spinner("Thinking..."):
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a helpful D&D adventure Q&A bot."),
+            ("user", "You are an expert in answering questions about a Dungeons and Dragons campaign described in provided documents. The provided documents describe a campaign where the main protagonists are Brocc, Evryn, and Gwendolyn(Gwen). Here are the relevant documents with a date and title from the character Brocc's perspective (sometimes in first person and sometimes in third person): {notes} \n\n Here is the question to answer. Base your answer only off of the provided documents, and no other extraneous material. Do not provide references to the documents.: {question}")
+        ])
         
-    print("\n______________________________________________________\n")
-    print(colored("\nD&D Campaign Q&A Bot: ", "green") + colored(resp, "blue"))
-    print("\n______________________________________________________\n")
-    print(colored("Note entry References(Title, date): \n", "green"))
-    for item in notes:
-        print("* " + colored(item.metadata["title"] + "," + item.metadata["date"], "yellow") + "\n")
+        notes = retriever.invoke(user_question)
 
-    print("______________________________________________________\n")
+        chain = (
+            prompt
+            | model
+            | StrOutputParser()
+        )
+
+    response = chain.invoke({"question": user_question, "notes": notes})  # Pass the query as a string, not wrapped in a dictionary
+    st.write("### ✅ Answer:")
+
+    response+="\n______________________________________________________\n"
+    response+="Note entry References(Title, date): \n"
+    for item in notes:
+        response += "* " + item.metadata["title"] + "," + item.metadata["date"] + "\n"
+    
+    st.write(response)
