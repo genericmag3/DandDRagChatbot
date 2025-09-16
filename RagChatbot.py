@@ -5,8 +5,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
 from langchain.schema.output_parser import StrOutputParser
-from termcolor import colored
-import emoji as moji
+#from termcolor import colored
+#import emoji as moji
 import streamlit as st
 
 # Initialize vector store
@@ -30,9 +30,23 @@ st.title("D&D Q&A Chatbot 🧙‍♂️")
 # Set up retriever in streamlit app
 st.session_state.retriever = retriever
 
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Display chat messages from history on app rerun
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
 user_question = st.text_input("Ask a question about the campaign...")
 
 if user_question:
+
+    st.session_state.messages.append({"role": "user", "content": user_question})
+    with st.chat_message("user"):
+        st.markdown(user_question)
+
     with st.spinner("Thinking..."):
         prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a helpful D&D adventure Q&A bot."),
@@ -46,13 +60,14 @@ if user_question:
             | model
             | StrOutputParser()
         )
-
-    response = chain.invoke({"question": user_question, "notes": notes})  # Pass the query as a string, not wrapped in a dictionary
-    st.write("### ✅ Answer:")
+        response = chain.invoke({"question": user_question, "notes": notes})  # Pass the query as a string, not wrapped in a dictionary
 
     response+="\n______________________________________________________\n"
     response+="Note entry References(Title, date): \n"
     for item in notes:
-        response += "* " + item.metadata["title"] + "," + item.metadata["date"] + "\n"
-    
-    st.write(response)
+        response += "* " + item.metadata["title"] + ", " + item.metadata["date"] + "\n"
+    response+="\n______________________________________________________\n"
+    #st.write(response)
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    with st.chat_message("assistant"):
+        st.markdown(response)
