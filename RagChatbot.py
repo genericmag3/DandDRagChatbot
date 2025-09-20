@@ -9,10 +9,7 @@ from streamlit_lottie import st_lottie
 import json
 import requests
 
-#import emoji as moji
 import streamlit as st
-
-user_first_interaction = True
 
 # Initialize vector store
 vector_store = Chroma(
@@ -45,7 +42,7 @@ if "messages" not in st.session_state:
 
 # Display chat messages from history on app rerun
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
+    with st.chat_message(message["role"], avatar=message["avatar"]):
         st.markdown(message["content"])
 
 
@@ -54,7 +51,7 @@ placeholder = st.empty()
 #user_question = # Show chat input at the bottom when a question has been asked.
 user_question = st.chat_input("Ask a question about the campaign...")
 if user_question:
-    st.session_state.messages.append({"role": "user", "content": user_question})
+    st.session_state.messages.append({"role": "user", "content": user_question,"avatar":None})
     with st.chat_message("user"):
         st.markdown(user_question)
     
@@ -76,7 +73,7 @@ if user_question:
         | model
         | StrOutputParser()
     )
-    response = chain.invoke({"question": user_question, "notes": notes})  # Pass the query as a string, not wrapped in a dictionary
+    response = chain.invoke({"question": user_question, "notes": notes})  # Pass the query and relevant note documents
 
     response+="\n______________________________________________________\n"
     response+="Note entry References(Title, date): \n"
