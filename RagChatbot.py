@@ -29,7 +29,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 #)
 
 # Set up model
-model = OllamaLLM(model="phi4-mini")
+model = OllamaLLM(model="phi4:14b")
 model.temperature = .6
 
 #Title streamlit chat window
@@ -64,8 +64,17 @@ else:
 
 #"sentence-transformers/all-MiniLM-L6-v2"
 
-hf_embeddings = HuggingFaceEmbeddings()#model_kwargs={"device": "cpu"})#model_name = "sentence-transformers/all-MiniLM-L6-v2")
+hf_embeddings = HuggingFaceEmbeddings(model_kwargs={"device": "cpu"})
 text_splitter = SemanticChunker(hf_embeddings)
+vector_store = Chroma(
+            collection_name="notes",
+            persist_directory="./chrome_langchain_db",
+            embedding_function=hf_embeddings
+)
+retriever = vector_store.as_retriever(
+        search_kwargs={"k": 7}
+)
+
 
 #docs = text_splitter.create_documents([state_of_the_union])
 #print(docs[0].page_content)
@@ -86,30 +95,20 @@ if note_document is not None:
             for chunk in chunks:
                 document = Document(
                     page_content=chunk,
-                    metadata={"Title": row["Title"], "Date": row["Date"], "Exerpt": chunk[:50]},
+                    metadata={"Title": row["Title"], "Date": row["Date"], "Exerpt Start": chunk[:25], "Exerpt End": chunk[-25:]},
                     id=str(i)
                 )
                 ids.append(str(k))
                 documents.append(document)
                 k += 1
-        vector_store = Chroma(
-            collection_name="notes",
-            persist_directory=db_location,
-            embedding_function=hf_embeddings
-        )
-        retriever = vector_store.as_retriever(
-        search_kwargs={"k": 7}
-        )
-    if vector_store != None: # To do: add error checking
-        vector_store.add_documents(documents=documents, ids=ids)
+        if vector_store != None: # To do: add error checking
+            vector_store.add_documents(documents=documents, ids=ids)
 
         #message_placeholder = st.empty()
         update_key()
         placeholder.empty()
         success = st.success("Campaign notes uploaded and processed successfully!")
-        
-
-    notes_uploaded = True
+        notes_uploaded = True
     
 
 
@@ -155,7 +154,7 @@ if notes_uploaded:
         response+="\n______________________________________________________\n"
         response+="Note entry References(date): \n"
         for item in notes:
-            response += "* " + item.metadata["Date"] +" " + " '" + item.metadata["Excerpt"] + "..." + "'\n"
+            response += "* " + item.metadata["Date"] +" " + " '" + item.metadata["Exerpt Start"] + "..." + item.metadata["Exerpt End"] + "'\n"
         response+="\n______________________________________________________\n"
         st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
         placeholder.empty()
