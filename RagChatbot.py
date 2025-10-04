@@ -14,16 +14,19 @@ import time
 
 import streamlit as st
 
-# Initialize vector store
-vector_store = Chroma(
-    collection_name="notes",
-    persist_directory="./chrome_langchain_db",
-    embedding_function=OllamaEmbeddings(model="mxbai-embed-large")
-)
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_huggingface import HuggingFaceEmbeddings
 
-retriever = vector_store.as_retriever(
-    search_kwargs={"k": 5}
-)
+# Initialize vector store
+# vector_store = Chroma(
+#     collection_name="notes",
+#     persist_directory="./chrome_langchain_db",
+#     embedding_function=OllamaEmbeddings(model="mxbai-embed-large")
+# )
+
+#retriever = vector_store.as_retriever(
+#    search_kwargs={"k": 5}
+#)
 
 # Set up model
 model = OllamaLLM(model="phi4-mini")
@@ -39,7 +42,7 @@ with open("star-magic.json", "r",errors='ignore') as f:
     magic_spinner = json.load(f)
 
 # Set up retriever in streamlit app
-st.session_state.retriever = retriever
+#st.session_state.retriever = retriever
 
 notes_uploaded = False
 
@@ -59,29 +62,44 @@ if st.session_state.uploader_key == 0:
 else:
     notes_uploaded = True
 
+#"sentence-transformers/all-MiniLM-L6-v2"
+
+hf_embeddings = HuggingFaceEmbeddings()#model_kwargs={"device": "cpu"})#model_name = "sentence-transformers/all-MiniLM-L6-v2")
+text_splitter = SemanticChunker(hf_embeddings)
+
+#docs = text_splitter.create_documents([state_of_the_union])
+#print(docs[0].page_content)
 # Create vector database from file
 if note_document is not None:
     df = pd.read_csv(note_document)
-    embeddings = OllamaEmbeddings(model="mxbai-embed-large")
+    #embeddings = OllamaEmbeddings(model="mxbai-embed-large")
     db_location = "./chrome_langchain_db"
     
     if df is not None: # to do: add error checking
         documents = []
         ids = []
+        k = 0 #init document ID
         
         for i, row in df.iterrows():
-            document = Document(
-                page_content=row["Contents"],
-                metadata={"Title": row["Title"], "Date": row["Date"]},
-                id=str(i)
-            )
-            ids.append(str(i))
-            documents.append(document)
-            vector_store = Chroma(
-                collection_name="notes",
-                persist_directory=db_location,
-                embedding_function=embeddings
+            text = row["Contents"]
+            chunks = text_splitter.split_text(text)
+            for chunk in chunks:
+                document = Document(
+                    page_content=chunk,
+                    metadata={"Title": row["Title"], "Date": row["Date"], "Exerpt": chunk[:50]},
+                    id=str(i)
                 )
+                ids.append(str(k))
+                documents.append(document)
+                k += 1
+        vector_store = Chroma(
+            collection_name="notes",
+            persist_directory=db_location,
+            embedding_function=hf_embeddings
+        )
+        retriever = vector_store.as_retriever(
+        search_kwargs={"k": 7}
+        )
     if vector_store != None: # To do: add error checking
         vector_store.add_documents(documents=documents, ids=ids)
 
@@ -137,7 +155,7 @@ if notes_uploaded:
         response+="\n______________________________________________________\n"
         response+="Note entry References(date): \n"
         for item in notes:
-            response += "* " + item.metadata["Date"] + "\n"
+            response += "* " + item.metadata["Date"] +" " + " '" + item.metadata["Excerpt"] + "..." + "'\n"
         response+="\n______________________________________________________\n"
         st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
         placeholder.empty()
