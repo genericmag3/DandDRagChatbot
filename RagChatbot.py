@@ -41,6 +41,10 @@ st.info("This app takes your notes from your campaign and passes relevant contex
 with open("star-magic.json", "r",errors='ignore') as f:
     magic_spinner = json.load(f)
 
+#Grab custom file upload animation
+with open("Magical_Effect_Loading.json", "r",errors='ignore') as f:
+    magic_loader = json.load(f)
+
 # Set up retriever in streamlit app
 #st.session_state.retriever = retriever
 
@@ -72,17 +76,29 @@ vector_store = Chroma(
             embedding_function=hf_embeddings
 )
 retriever = vector_store.as_retriever(
-        search_kwargs={"k": 7}
+        search_kwargs={"k": 9}
 )
 
 
-#docs = text_splitter.create_documents([state_of_the_union])
-#print(docs[0].page_content)
 # Create vector database from file
 if note_document is not None:
+
+    #get rid of the file uploader container once file has been selected
+    placeholder.empty()
+
+    #start data upload and database creation animation
+    animationplaceholder = st.empty()
+        # Display the animation initially
+    with animationplaceholder.container():
+        st_lottie(magic_loader, height=200, key="custom_loading_spinner")
+        progress_text = "Casting Vectorization Spell..."
+        my_bar = st.progress(0, text=progress_text)
+
+
     df = pd.read_csv(note_document)
     #embeddings = OllamaEmbeddings(model="mxbai-embed-large")
     db_location = "./chrome_langchain_db"
+    percent_complete = 0
     
     if df is not None: # to do: add error checking
         documents = []
@@ -101,12 +117,16 @@ if note_document is not None:
                 ids.append(str(k))
                 documents.append(document)
                 k += 1
+            percent_complete = percent_complete + 100/df.shape[0]
+            if(percent_complete <= 100):
+                my_bar.progress(int(percent_complete), text=progress_text)
         if vector_store != None: # To do: add error checking
             vector_store.add_documents(documents=documents, ids=ids)
 
         #message_placeholder = st.empty()
         update_key()
-        placeholder.empty()
+        animationplaceholder.empty()
+        #placeholder.empty()
         success = st.success("Campaign notes uploaded and processed successfully!")
         notes_uploaded = True
     
@@ -143,6 +163,7 @@ if notes_uploaded:
         ])
             
         notes = retriever.invoke(user_question)
+        print(notes)
 
         chain = (
             prompt
