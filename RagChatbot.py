@@ -142,53 +142,78 @@ if ("messages" not in st.session_state) or ("references" not in st.session_state
     st.session_state.buttons = []
     st.session_state.buttoninfo = []
     st.session_state.button_key = 0
+    print("wiped")
 
-k = 0
 
-# st.markdown(  # todo: clean up this custom html. Make it a variable
-#                 """
-#                     <style>
-#                     button {
-#                         background: none!important;
-#                         border: none;
-#                         padding: 0!important;
-#                         color: black !important;
-#                         text-decoration: none;
-#                         cursor: pointer;
-#                         border: none !important;
-#                     }
-#                     button:hover {
-#                         text-decoration: none;
-#                         color: black !important;
-#                     }
-#                     button:focus {
-#                         outline: none !important;
-#                         box-shadow: none !important;
-#                         color: black !important;
-#                     }
-#                     </style>
-#                     """,
-#                     unsafe_allow_html=True
-#                 )
 
+
+st.markdown(  # todo: clean up this custom html. Make it a variable
+                """
+                    <style>
+                    button {
+                        background: none!important;
+                        border: none;
+                        padding: 0!important;
+                        color: black !important;
+                        text-decoration: none;
+                        cursor: pointer;
+                        border: none !important;
+                    }
+                    button:hover {
+                        text-decoration: none;
+                        color: black !important;
+                    }
+                    button:focus {
+                        outline: none !important;
+                        box-shadow: none !important;
+                        color: black !important;
+                    }
+                    </style>
+                    """,
+                    unsafe_allow_html=True
+                )
+i = 0 #  represents index of references, each index can have multiple references and there is one per bot response (one per )
+#k = 0 #  represents the button info index used in maintaining chat history (many per note entry)
+p = 0 # represents which version 
+oldmessageindex = -1
+# Maybe I need to 
 # Display chat messages and references from history on app rerun
-for message in st.session_state.messages:
+for messageindex, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"], avatar=message["avatar"]):
-        print("message content")
+        #print("message content")
         st.markdown(message["content"])
-        print(message["role"])
-        if (message["role"] == "assistant"):
-            print("creating buttons for the assistant response")
-            for refs in st.session_state.references:
-                # Create buttons for
-                print("generating buttons for a specific bot response")
-                #st.session_state.buttons[k:k+len(refs)] 
-                for button in st.session_state.buttoninfo[k:k+len(refs)]:
-                    #button
-                    st.button(button[0], on_click = button[1], args = button[2], key = button[3])
-                    #print(button.key)
-                k = k + len(refs)
+        #print(message["role"])
+        
+        #print(messageindex)
+        #print(oldmessageindex)
+        #print("/n")
+        #print(i)
+        #print(message["role"])
+        #print("\n")
+        if (message["role"] == "assistant") and (oldmessageindex != messageindex):
+            #print("creating buttons for the assistant response")
             
+            #for refs in st.session_state.references[i]:
+                # Create buttons for
+                #print("generating buttons for a specific bot response")
+                #st.session_state.buttons[k:k+len(refs)] 
+                #print(k)
+                #print(len(st.session_state.buttoninfo))
+                #print(len(st.session_state.references[i]))
+                #for buttoninfo in st.session_state.buttoninfo[k:k+len(st.session_state.references[i]) - 1]:
+                #print(st.session_state.buttoninfo)
+            for buttoninfo in st.session_state.buttoninfo[i]:
+                #button
+                print(buttoninfo[3])
+                print("\n")
+                st.button(buttoninfo[0], on_click = buttoninfo[1], args = buttoninfo[2], key = buttoninfo[3])
+                
+                #print(button.key)
+            #k = k + len(st.session_state.references[i]) - 1
+            i = i + 1
+            
+            
+    oldmessageindex = messageindex        
             # for item in st.session_state.references[k]:
             #     k = k + 1
             #     if st.button(item.metadata["Date"], key=f"click_{k}"):
@@ -196,7 +221,6 @@ for message in st.session_state.messages:
 
 
 # init References history
-
 def reference_button(content):
     modal = Modal(key = "reference_modal", title="Reference Content")
     with modal.container():
@@ -205,6 +229,7 @@ def reference_button(content):
 if notes_uploaded:
     user_question = st.chat_input("Ask a question about the campaign...")
     if user_question:
+        tempbuttoninfo = []
         st.session_state.messages.append({"role": "user", "content": user_question,"avatar":None})
         with st.chat_message("user"):
             st.markdown(user_question)
@@ -237,11 +262,22 @@ if notes_uploaded:
             st.markdown(response)    
         st.session_state.references.append(notes) # save group of references per bot response
             # Create a unique button for each reference
+        
         for item in notes:
+            #tempbuttoninfo = []
+            #st.session_state.button_key = st.session_state.button_key + 1
+            #print(st.session_state.button_key)
+            tempbuttoninfo.append([item.metadata["Date"],reference_button, (item.page_content,), f"click_{st.session_state.button_key}"])
             st.session_state.buttons.append(st.button(str(item.metadata["Date"]), on_click= reference_button,args=(item.page_content,),  key = f"click_{st.session_state.button_key}"))
-            st.session_state.buttoninfo.append([item.metadata["Date"],reference_button, (item.page_content,), f"click_{st.session_state.button_key}"])
+            #st.button(str(item.metadata["Date"]), on_click= reference_button,args=(item.page_content,),  key = f"click_{st.session_state.button_key}")
+            
+            #st.session_state.buttoninfo.append([item.metadata["Date"],reference_button, (item.page_content,), f"click_{st.session_state.buton_key}"])
             st.session_state.button_key = st.session_state.button_key + 1
-        st.session_state.first_chat_key = 1 
+            
+        st.session_state.first_chat_key = 1
+        
+        #print("\n")
+        st.session_state.buttoninfo.append(tempbuttoninfo)
 
 #print(st.session_state.references)
 
