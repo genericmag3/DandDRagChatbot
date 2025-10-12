@@ -12,9 +12,6 @@ from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface import HuggingFaceEmbeddings
 import streamlit as st
 
-# Helper functions
-
-
 # Set up model
 @st.cache_resource
 def load_model(modelname):
@@ -39,9 +36,6 @@ with open("star-magic.json", "r",errors='ignore') as f:
 #Grab custom file upload animation
 with open("Magical_Effect_Loading.json", "r",errors='ignore') as f:
     magic_loader = json.load(f)
-
-# Set up retriever in streamlit app
-#st.session_state.retriever = retriever
 
 notes_uploaded = False
 
@@ -79,7 +73,12 @@ elif st.session_state.uploader_key == 0:
         note_document = st.file_uploader("Upload your campaign notes", type=["csv"]) #key=st.session_state.uploader_key, on_change=update_key
 
 # Can all of this be cached?
-hf_embeddings = HuggingFaceEmbeddings(model_kwargs={"device": "cpu"})
+@st.cache_resource(show_spinner=False)
+def load_embeddings():
+    embeddings = HuggingFaceEmbeddings(model_kwargs={"device": "cpu"})
+    return embeddings
+
+hf_embeddings = load_embeddings()
 text_splitter = SemanticChunker(hf_embeddings)
 vector_store = Chroma(
             collection_name="notes",
@@ -188,36 +187,59 @@ if notes_uploaded:
             | model
             | StrOutputParser()
         )
-        references_found = False
+        #references_found = False
         if len(notes) > 0:
             response = chain.invoke({"question": user_question, "notes": notes})  # Pass the query and relevant note documents
+            placeholder.empty()
             references_found = True
-        else:
-            response = "Could not find any relevant journal entries for your query. It could be that there is not any relevant information regarding your query in the notes, the question needs to be reworded, or spelling needs to be reviewed."
-            st.session_state.buttoninfo.append(None)
-        placeholder.empty()
-        
-        with st.chat_message("assistant", avatar="🧙‍♂️"):
-            st.write_stream(stream_data(response))
+            with st.chat_message("assistant", avatar="🧙‍♂️"):
 
             # Only display references if any were found
-            if(references_found):
-                response +="\n______________________________________________________\n"
-                response += "Note entry References: \n"
-                st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
-                st.markdown("\n______________________________________________________\n")
-                st.markdown("Note entry References: \n")
-                
-                # Create a unique button for each reference
-                for item in notes:
-                    tempbuttoninfo.append([item.metadata["Date"],reference_button, (item.page_content,), f"click_{st.session_state.button_key}"])
-                    st.button(str(item.metadata["Date"]), on_click= reference_button,args=(item.page_content,),  key = f"click_{st.session_state.button_key}")
-                    time.sleep(0.02)
-                    # Generate new button key for next button
-                    st.session_state.button_key = st.session_state.button_key + 1
+                if(references_found):
+                    response +="\n______________________________________________________\n"
+                    response += "Note entry References: \n"
+                    st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
+                    st.write_stream(stream_data(response))
+                    # Create a unique button for each reference
+                    for item in notes:
+                        tempbuttoninfo.append([item.metadata["Date"],reference_button, (item.page_content,), f"click_{st.session_state.button_key}"])
+                        st.button(str(item.metadata["Date"]), on_click= reference_button,args=(item.page_content,),  key = f"click_{st.session_state.button_key}")
+                        time.sleep(0.02)
+                        # Generate new button key for next button
+                        st.session_state.button_key = st.session_state.button_key + 1
 
-                # Add button information to the session state            
-                st.session_state.buttoninfo.append(tempbuttoninfo)
-            # Save canned response to chat history
-            else:
-                st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
+                    # Add button information to the session state            
+                    st.session_state.buttoninfo.append(tempbuttoninfo)
+        # Save canned response to chat history if no references
+        else:
+            placeholder.empty()
+            response = "Could not find any relevant journal entries for your query. It could be that there is not any relevant information regarding your query in the notes, the question needs to be reworded, or spelling needs to be reviewed."
+            st.session_state.buttoninfo.append(None)
+            st.write_stream(stream_data(response))
+            st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
+        st.rerun()
+        
+        
+        # with st.chat_message("assistant", avatar="🧙‍♂️"):
+
+        #     # Only display references if any were found
+        #     if(references_found):
+        #         response +="\n______________________________________________________\n"
+        #         response += "Note entry References: \n"
+        #         st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
+        #         st.write_stream(stream_data(response))
+        #         # Create a unique button for each reference
+        #         for item in notes:
+        #             tempbuttoninfo.append([item.metadata["Date"],reference_button, (item.page_content,), f"click_{st.session_state.button_key}"])
+        #             st.button(str(item.metadata["Date"]), on_click= reference_button,args=(item.page_content,),  key = f"click_{st.session_state.button_key}")
+        #             time.sleep(0.02)
+        #             # Generate new button key for next button
+        #             st.session_state.button_key = st.session_state.button_key + 1
+
+        #         # Add button information to the session state            
+        #         st.session_state.buttoninfo.append(tempbuttoninfo)
+        #     # Save canned response to chat history if no references
+            # else:
+            #     st.write_stream(stream_data(response))
+            #     st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
+            # st.rerun()
