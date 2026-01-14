@@ -1,32 +1,33 @@
 from langchain_chroma import Chroma
-from langchain_ollama import OllamaEmbeddings
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.prompts import PromptTemplate
-from langchain.chains import RetrievalQA
 from langchain.schema.output_parser import StrOutputParser
 from langchain_core.documents import Document
 from streamlit_lottie import st_lottie
 import json
-import requests
 import pandas as pd
 import time
 import os
-
-import streamlit as st
-from streamlit_modal import Modal
-
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface import HuggingFaceEmbeddings
+import streamlit as st
 
 # Set up model
-model = OllamaLLM(model="phi4:14b")
+@st.cache_resource
+def load_model(modelname):
+    model = OllamaLLM(model=modelname)
+    return model
+
+model = load_model("phi4:14b")
 model.temperature = .6
 
 #Title streamlit chat window
 st.title("D&D Q&A Chatbot 🧙‍♂️")
 
 st.info("This app takes your notes from your campaign and passes relevant context from them along with your question to the LLM. It does not store your notes or chat history. Please consult provided references as the AI may hallucinate.")
+
+model = load_model("phi4:14b")
+model.temperature = .6
 
 #Grab custom spinner animation
 with open("star-magic.json", "r",errors='ignore') as f:
@@ -35,9 +36,6 @@ with open("star-magic.json", "r",errors='ignore') as f:
 #Grab custom file upload animation
 with open("Magical_Effect_Loading.json", "r",errors='ignore') as f:
     magic_loader = json.load(f)
-
-# Set up retriever in streamlit app
-#st.session_state.retriever = retriever
 
 notes_uploaded = False
 
@@ -53,22 +51,34 @@ def update_key():
 note_document = None
 databasedir = "./chrome_langchain_db"
 
+def has_subfolders(directory_path):
+    if not os.path.isdir(directory_path):
+        return False  # Not a valid directory
+
+    for item in os.listdir(directory_path):
+        item_path = os.path.join(directory_path, item)
+        if os.path.isdir(item_path):
+            return True
+    return False
+
 # if the database already exists, skip the upload. 
 # To do: allow for re-upload of notes via sidebar button
-if os.path.isdir(databasedir):
+if has_subfolders(databasedir):
     notes_uploaded = True
     update_key()
-    #notes = []
 elif st.session_state.uploader_key == 0:
     placeholder = st.empty()
     # Have user upload campaign notes
     with placeholder.container():
         note_document = st.file_uploader("Upload your campaign notes", type=["csv"]) #key=st.session_state.uploader_key, on_change=update_key
 
+# Can all of this be cached?
+@st.cache_resource(show_spinner=False)
+def load_embeddings():
+    embeddings = HuggingFaceEmbeddings(model_kwargs={"device": "cpu"})
+    return embeddings
 
-#"sentence-transformers/all-MiniLM-L6-v2"
-
-hf_embeddings = HuggingFaceEmbeddings(model_kwargs={"device": "cpu"})
+hf_embeddings = load_embeddings()
 text_splitter = SemanticChunker(hf_embeddings)
 vector_store = Chroma(
             collection_name="notes",
@@ -86,7 +96,6 @@ if note_document is not None:
 
     #get rid of the file uploader container once file has been selected
     placeholder.empty()
-
     #start data upload and database creation animation
     animationplaceholder = st.empty()
         # Display the animation initially
@@ -97,7 +106,6 @@ if note_document is not None:
 
 
     df = pd.read_csv(note_document)
-    #embeddings = OllamaEmbeddings(model="mxbai-embed-large")
     db_location = "./chrome_langchain_db"
     percent_complete = 0
     
@@ -105,7 +113,6 @@ if note_document is not None:
         documents = []
         ids = []
         l = 0 #init document ID
-        
         for i, row in df.iterrows():
             text = row["Contents"]
             chunks = text_splitter.split_text(text)
@@ -115,7 +122,7 @@ if note_document is not None:
                     metadata={"Title": row["Title"], "Date": row["Date"], "Exerpt Start": chunk[:25], "Exerpt End": chunk[-25:]},
                     id=str(i)
                 )
-                ids.append(str(l))
+                ids.append(id)
                 documents.append(document)
                 l += 1
             percent_complete = percent_complete + 100/df.shape[0]
@@ -123,109 +130,40 @@ if note_document is not None:
                 my_bar.progress(int(percent_complete), text=progress_text)
         if vector_store != None: # To do: add error checking
             vector_store.add_documents(documents=documents, ids=ids)
-
-        #message_placeholder = st.empty()
         update_key()
         #stop loading animation
         animationplaceholder.empty()
         
         success = st.success("Campaign notes uploaded and processed successfully!")
-        notes_uploaded = True
-    
+        notes_uploaded = True    
 
-
-
-# Initialize chat and reference history
-if ("messages" not in st.session_state) or ("references" not in st.session_state) or ("buttons" not in st.session_state):
+# Initialize session state variables
+if ("messages" not in st.session_state) or ("buttoninfo" not in st.session_state) or ("button_key" not in st.session_state):
     st.session_state.messages = []
-    st.session_state.references = [] # use this to append references per bot response
-    st.session_state.buttons = []
     st.session_state.buttoninfo = []
     st.session_state.button_key = 0
-    print("wiped")
 
 
-
-
-st.markdown(  # todo: clean up this custom html. Make it a variable
-                """
-                    <style>
-                    button {
-                        background: none!important;
-                        border: none;
-                        padding: 0!important;
-                        color: black !important;
-                        text-decoration: none;
-                        cursor: pointer;
-                        border: none !important;
-                    }
-                    button:hover {
-                        text-decoration: none;
-                        color: black !important;
-                    }
-                    button:focus {
-                        outline: none !important;
-                        box-shadow: none !important;
-                        color: black !important;
-                    }
-                    </style>
-                    """,
-                    unsafe_allow_html=True
-                )
-i = 0 #  represents index of references, each index can have multiple references and there is one per bot response (one per )
-#k = 0 #  represents the button info index used in maintaining chat history (many per note entry)
-p = 0 # represents which version 
-oldmessageindex = -1
-# Maybe I need to 
+i = 0 #  represents index of references, each index can have multiple references and there is one per bot response
 # Display chat messages and references from history on app rerun
-for messageindex, message in enumerate(st.session_state.messages):
+for message in st.session_state.messages:  
     with st.chat_message(message["role"], avatar=message["avatar"]):
-        #print("message content")
         st.markdown(message["content"])
-        #print(message["role"])
-        
-        #print(messageindex)
-        #print(oldmessageindex)
-        #print("/n")
-        #print(i)
-        #print(message["role"])
-        #print("\n")
-        if (message["role"] == "assistant") and (oldmessageindex != messageindex):
-            #print("creating buttons for the assistant response")
-            
-            #for refs in st.session_state.references[i]:
-                # Create buttons for
-                #print("generating buttons for a specific bot response")
-                #st.session_state.buttons[k:k+len(refs)] 
-                #print(k)
-                #print(len(st.session_state.buttoninfo))
-                #print(len(st.session_state.references[i]))
-                #for buttoninfo in st.session_state.buttoninfo[k:k+len(st.session_state.references[i]) - 1]:
-                #print(st.session_state.buttoninfo)
-            for buttoninfo in st.session_state.buttoninfo[i]:
-                #button
-                print(buttoninfo[3])
-                print("\n")
-                st.button(buttoninfo[0], on_click = buttoninfo[1], args = buttoninfo[2], key = buttoninfo[3])
-                
-                #print(button.key)
-            #k = k + len(st.session_state.references[i]) - 1
+        if (message["role"] == "assistant"):
+            if(st.session_state.buttoninfo[i] is not None): 
+                for buttoninfo in st.session_state.buttoninfo[i]:
+                    st.button(buttoninfo[0], on_click = buttoninfo[1], args = buttoninfo[2], key = buttoninfo[3])
             i = i + 1
-            
-            
-    oldmessageindex = messageindex        
-            # for item in st.session_state.references[k]:
-            #     k = k + 1
-            #     if st.button(item.metadata["Date"], key=f"click_{k}"):
-            #         st.dialog(str(item.page_content))
 
-
-# init References history
+@st.dialog("Reference Content")
 def reference_button(content):
-    modal = Modal(key = "reference_modal", title="Reference Content")
-    with modal.container():
-        st.markdown(content)
-#user_question = # Show chat input at the bottom when a question has been asked.
+    st.write(content)
+
+def stream_data(response):
+    for word in response.split(" "):
+        yield word + " "
+        time.sleep(0.02)
+
 if notes_uploaded:
     user_question = st.chat_input("Ask a question about the campaign...")
     if user_question:
@@ -239,7 +177,6 @@ if notes_uploaded:
         with placeholder.container():
             st_lottie(magic_spinner, height=200, key="custom_spinner")
 
-        #with st.spinner("Consulting texts..."):
         prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a helpful D&D adventure Q&A bot."),
             ("user", "You are an expert in answering questions about a Dungeons and Dragons campaign described in provided documents. The provided documents describe a campaign where the main protagonists are Brocc, Evryn, and Gwendolyn(Gwen). Here are the relevant documents with a date and title from the character Brocc's perspective (sometimes in first person and sometimes in third person): {notes} \n\n Here is the question to answer. Base your answer only off of the provided documents, and no other extraneous material. Do not provide references to the documents.: {question}")
@@ -250,45 +187,59 @@ if notes_uploaded:
             | model
             | StrOutputParser()
         )
-        response = chain.invoke({"question": user_question, "notes": notes})  # Pass the query and relevant note documents
+        #references_found = False
+        if len(notes) > 0:
+            response = chain.invoke({"question": user_question, "notes": notes})  # Pass the query and relevant note documents
+            placeholder.empty()
+            references_found = True
+            with st.chat_message("assistant", avatar="🧙‍♂️"):
 
-        response+="\n______________________________________________________\n"
-        response+="Note entry References: \n"
+            # Only display references if any were found
+                if(references_found):
+                    response +="\n______________________________________________________\n"
+                    response += "Note entry References: \n"
+                    st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
+                    st.write_stream(stream_data(response))
+                    # Create a unique button for each reference
+                    for item in notes:
+                        tempbuttoninfo.append([item.metadata["Date"],reference_button, (item.page_content,), f"click_{st.session_state.button_key}"])
+                        st.button(str(item.metadata["Date"]), on_click= reference_button,args=(item.page_content,),  key = f"click_{st.session_state.button_key}")
+                        time.sleep(0.02)
+                        # Generate new button key for next button
+                        st.session_state.button_key = st.session_state.button_key + 1
+
+                    # Add button information to the session state            
+                    st.session_state.buttoninfo.append(tempbuttoninfo)
+        # Save canned response to chat history if no references
+        else:
+            placeholder.empty()
+            response = "Could not find any relevant journal entries for your query. It could be that there is not any relevant information regarding your query in the notes, the question needs to be reworded, or spelling needs to be reviewed."
+            st.session_state.buttoninfo.append(None)
+            st.write_stream(stream_data(response))
+            st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
+        st.rerun()
         
-        #response+="\n______________________________________________________\n"
-        st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
-        placeholder.empty()
-        with st.chat_message("assistant", avatar="🧙‍♂️"):
-            st.markdown(response)    
-        st.session_state.references.append(notes) # save group of references per bot response
-            # Create a unique button for each reference
         
-        for item in notes:
-            #tempbuttoninfo = []
-            #st.session_state.button_key = st.session_state.button_key + 1
-            #print(st.session_state.button_key)
-            tempbuttoninfo.append([item.metadata["Date"],reference_button, (item.page_content,), f"click_{st.session_state.button_key}"])
-            st.session_state.buttons.append(st.button(str(item.metadata["Date"]), on_click= reference_button,args=(item.page_content,),  key = f"click_{st.session_state.button_key}"))
-            #st.button(str(item.metadata["Date"]), on_click= reference_button,args=(item.page_content,),  key = f"click_{st.session_state.button_key}")
-            
-            #st.session_state.buttoninfo.append([item.metadata["Date"],reference_button, (item.page_content,), f"click_{st.session_state.buton_key}"])
-            st.session_state.button_key = st.session_state.button_key + 1
-            
-        st.session_state.first_chat_key = 1
-        
-        #print("\n")
-        st.session_state.buttoninfo.append(tempbuttoninfo)
+        # with st.chat_message("assistant", avatar="🧙‍♂️"):
 
-#print(st.session_state.references)
+        #     # Only display references if any were found
+        #     if(references_found):
+        #         response +="\n______________________________________________________\n"
+        #         response += "Note entry References: \n"
+        #         st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
+        #         st.write_stream(stream_data(response))
+        #         # Create a unique button for each reference
+        #         for item in notes:
+        #             tempbuttoninfo.append([item.metadata["Date"],reference_button, (item.page_content,), f"click_{st.session_state.button_key}"])
+        #             st.button(str(item.metadata["Date"]), on_click= reference_button,args=(item.page_content,),  key = f"click_{st.session_state.button_key}")
+        #             time.sleep(0.02)
+        #             # Generate new button key for next button
+        #             st.session_state.button_key = st.session_state.button_key + 1
 
-
-#print(st.session_state.references[:len(st.session_state.references[-1])][0].page_content)
-
-#if st.session_state.first_chat_key == 1:  
-    #print(st.session_state.references[:len(st.session_state.references[-1])][0].page_content)              
-#     #for item in st.session_state.references[-1]:
-#         #k = k + 1
-#     for i, button in enumerate(st.session_state.buttons[:len(st.session_state.references[-1])]):
-#         if button:
-#             print(st.session_state.references[:len(st.session_state.references[-1])][i].page_content)
-#             #st.dialog(st.session_state.references[:len(st.session_state.references[-1])][i])
+        #         # Add button information to the session state            
+        #         st.session_state.buttoninfo.append(tempbuttoninfo)
+        #     # Save canned response to chat history if no references
+            # else:
+            #     st.write_stream(stream_data(response))
+            #     st.session_state.messages.append({"role": "assistant", "content": response, "avatar":"🧙‍♂️"})
+            # st.rerun()
