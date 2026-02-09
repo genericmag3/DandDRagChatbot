@@ -11,6 +11,9 @@ import os
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface import HuggingFaceEmbeddings
 import streamlit as st
+import re
+import io
+from langchain.docstore.document import Document
 
 # Set up model
 #@st.cache_resource
@@ -18,16 +21,13 @@ def load_model(modelname):
     model = OllamaLLM(model=modelname)
     return model
 
-model = load_model("phi4:14b")
-model.temperature = .6
-
 #Title streamlit chat window
 st.title("D&D Q&A Chatbot 🧙‍♂️")
 
 st.info("This app takes your notes from your campaign and passes relevant context from them along with your question to the LLM. It does not store your notes or chat history. Please consult provided references as the AI may hallucinate.")
 
-model = load_model("phi4:14b")
-model.temperature = .6
+model = load_model("llama3.2")
+model.temperature = .7
 
 #Grab custom spinner animation
 with open("star-magic.json", "r",errors='ignore') as f:
@@ -70,13 +70,46 @@ elif st.session_state.uploader_key == 0:
     placeholder = st.empty()
     # Have user upload campaign notes
     with placeholder.container():
-        note_document = st.file_uploader("Upload your campaign notes", type=["csv"]) #key=st.session_state.uploader_key, on_change=update_key
+        note_document = st.file_uploader("Upload your campaign notes", type=["csv", "txt"]) #key=st.session_state.uploader_key, on_change=update_key
 
 # Can all of this be cached?
 #@st.cache_resource(show_spinner=False)
 def load_embeddings():
     embeddings = HuggingFaceEmbeddings(model_kwargs={"device": "cpu"})
     return embeddings
+
+def parse_journal_text(file_content):
+    """Parses a text file with date headers into a structured list of dicts."""
+    # Matches common date formats like 2023-10-27 or 10/27/2023 at the start of a line
+    date_pattern = r'^(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4})'
+    
+    entries = []
+    current_date = "Unknown Date"
+    current_content = []
+
+    for line in file_content.splitlines():
+        match = re.match(date_pattern, line.strip())
+        if match:
+            # If we already have a previous entry, save it before starting a new one
+            if current_content:
+                entries.append({
+                    "Title": f"Entry for {current_date}",
+                    "Date": current_date,
+                    "Contents": "\n".join(current_content).strip()
+                })
+            current_date = match.group(1)
+            current_content = [line[match.end():].strip()] # Start content after the date
+        else:
+            current_content.append(line.strip())
+
+    # Catch the final entry
+    if current_content:
+        entries.append({
+            "Title": f"Entry for {current_date}",
+            "Date": current_date,
+            "Contents": "\n".join(current_content).strip()
+        })
+    return pd.DataFrame(entries)
 
 hf_embeddings = load_embeddings()
 text_splitter = SemanticChunker(hf_embeddings)
@@ -105,37 +138,52 @@ if note_document is not None:
         my_bar = st.progress(0, text=progress_text)
 
 
-    df = pd.read_csv(note_document)
-    db_location = "./chrome_langchain_db"
-    percent_complete = 0
-    
-    if df is not None: # to do: add error checking
+    # --- Main Logic ---
+    # note_document is the uploaded file from st.file_uploader
+    file_extension = note_document.name.split('.')[-1].lower()
+
+    if file_extension == 'csv':
+        df = pd.read_csv(note_document)
+    else:
+        # Read the text file content and parse it into the same DF structure
+        stringio = io.StringIO(note_document.getvalue().decode("utf-8"))
+        df = parse_journal_text(stringio.read())
+
+    if df is not None and not df.empty:
         documents = []
         idlist = []
-        l = 0 #init document ID
+        l = 0 
+        
         for i, row in df.iterrows():
-            text = row["Contents"]
+            text = str(row["Contents"])
+            # Existing semantic chunking via text_splitter
             chunks = text_splitter.split_text(text)
             for chunk in chunks:
                 document = Document(
                     page_content=chunk,
-                    metadata={"Title": row["Title"], "Date": row["Date"], "Exerpt Start": chunk[:25], "Exerpt End": chunk[-25:]},
+                    metadata={
+                        "Title": row.get("Title", "Untitled"), 
+                        "Date": str(row.get("Date", "Unknown")), 
+                        "Exerpt Start": chunk[:25], 
+                        "Exerpt End": chunk[-25:]
+                    },
                     id=str(l)
                 )
                 idlist.append(str(l))
                 documents.append(document)
                 l += 1
-            percent_complete = percent_complete + 100/df.shape[0]
-            if(percent_complete <= 100):
-                my_bar.progress(int(percent_complete), text=progress_text)
-        if vector_store != None: # To do: add error checking
+            
+            # Progress bar logic
+            percent_complete = (i + 1) / len(df) * 100
+            my_bar.progress(int(percent_complete), text=progress_text)
+                
+        if vector_store is not None:
             vector_store.add_documents(documents=documents, ids=idlist)
-        update_key()
-        #stop loading animation
-        animationplaceholder.empty()
         
-        success = st.success("Campaign notes uploaded and processed successfully!")
-        notes_uploaded = True    
+        animationplaceholder.empty()
+        notes_uploaded = True
+        st.success("Journal processed successfully!")
+   
 
 # Initialize session state variables
 if ("messages" not in st.session_state) or ("buttoninfo" not in st.session_state) or ("button_key" not in st.session_state):
