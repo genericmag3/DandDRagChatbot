@@ -2,7 +2,7 @@ from langchain_chroma import Chroma
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
-from langchain_core.documents import Document
+from langchain_core.documents import Document 
 from streamlit_lottie import st_lottie
 import json
 import pandas as pd
@@ -11,8 +11,9 @@ import os
 import streamlit as st
 import re
 import io
-from langchain.docstore.document import Document
+from langchain.docstore.document import Document as langchaindoc
 from langchain_experimental.text_splitter import SemanticChunker
+from docx import Document as DocxReader
 
 #import local modules
 import CreateDatabase
@@ -73,7 +74,7 @@ elif st.session_state.uploader_key == 0:
     placeholder = st.empty()
     # Have user upload campaign notes
     with placeholder.container():
-        note_document = st.file_uploader("Upload your campaign notes", type=["csv", "txt"]) #key=st.session_state.uploader_key, on_change=update_key
+        note_document = st.file_uploader("Upload your campaign notes") #key=st.session_state.uploader_key, on_change=update_key
 
 # Init text splitter, retriever, and vector database
 text_splitter, retriever,vector_store = CreateDatabase.create_hf_retrival_artifacts(databasedir)
@@ -95,6 +96,20 @@ if note_document is not None:
 
     if file_extension == 'csv':
         df = pd.read_csv(note_document)
+    elif file_extension == 'docx':
+        # Read the file into a buffer
+        bytes_data = note_document.read()
+        doc_io = io.BytesIO(bytes_data)
+        document = DocxReader(doc_io)
+
+        document_text = []
+        for paragraph in document.paragraphs:
+            document_text.append(paragraph.text)
+            
+        # Join paragraphs together with newline character
+        text_content = '\n'.join(document_text)
+
+        df = CreateDatabase.parse_journal_text(text_content, databasedir)
     else:
         # Read the text file content and parse it into the same dataframe structure
         stringio = io.StringIO(note_document.getvalue().decode("utf-8"))
@@ -110,7 +125,7 @@ if note_document is not None:
             # Existing semantic chunking via text_splitter
             chunks = text_splitter.split_text(text)
             for chunk in chunks:
-                document = Document(
+                document = langchaindoc(
                     page_content=chunk,
                     metadata={
                         "Title": row.get("Title", "Untitled"), 
