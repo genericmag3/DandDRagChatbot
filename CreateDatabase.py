@@ -1,15 +1,11 @@
-import os
 import pandas as pd
 from langchain_chroma import Chroma
-from langchain_core.documents import Document
 import re
 import io
-from langchain.docstore.document import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain.docstore.document import Document as langchaindoc
 from docx import Document as DocxReader
-import streamlit as s
 
 def load_embeddings():
     embeddings = HuggingFaceEmbeddings(model_kwargs={"device": "cpu"}) # add check for cuda version and use 'cuda' if compatible?
