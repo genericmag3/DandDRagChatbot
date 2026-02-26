@@ -1,16 +1,11 @@
-from langchain_chroma import Chroma
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
-from langchain_core.documents import Document 
 from streamlit_lottie import st_lottie
 import json
-import pandas as pd
 import time
 import os
 import streamlit as st
-from langchain.docstore.document import Document as langchaindoc
-from langchain_experimental.text_splitter import SemanticChunker
 
 #import local modules
 import CreateDatabase
