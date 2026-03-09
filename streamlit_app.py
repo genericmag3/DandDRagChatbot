@@ -46,22 +46,14 @@ def process_model_options():
             st.session_state.model_chosen = None
             st.session_state.model_temperature = None
 
-def delete_member(member_id):
-    # Filter list to remove the specific ID
-    st.session_state.party_members = [
-        m for m in st.session_state.party_members if m['id'] != member_id
-    ]
-
 def process_journal_options():
-    temp = [member['name'] for member in st.session_state.party_members]
-    print(temp)
     with st.sidebar:
         st.header("📜🪶 Journal Options")
-        # 2. Iterate over the list party members
+        # Iterate over the list party members
         for i, member in enumerate(st.session_state.party_members):
             m_id = member['id']
             
-            # Use the UNIQUE ID as the key, not the index 'i'
+            # Use unique ID as the key
             new_name = st.text_input(
                 f"Member {i+1}",
                 key=f"input_{m_id}", 
@@ -117,7 +109,11 @@ def process_journal_options():
             with st.toast("❌ Notes processing failed! Check disk space or existence of journal.", icon="🧙‍♂️"):
                 pass  # Optional: Add more details here
 
-    
+def delete_member(member_id):
+    # Filter list to remove the specific ID
+    st.session_state.party_members = [
+        m for m in st.session_state.party_members if m['id'] != member_id
+    ]
 
 def update_message_history():
     i = 0 #  represents index of references, each index can have multiple references and there is one per bot response
