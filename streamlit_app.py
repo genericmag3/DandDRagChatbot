@@ -53,23 +53,31 @@ def process_journal_options():
         for i, member in enumerate(st.session_state.party_members):
             m_id = member['id']
             
-            # Use unique ID as the key
-            new_name = st.text_input(
-                f"Member {i+1}",
-                key=f"input_{m_id}", 
-                value=member['name']
-            )
+            # Name input and delete button columns
+            col1, col2 = st.columns(2)
+            
+            with col1:  
+                new_name = st.text_input(
+                    f"Member {i+1}",
+                    key=f"input_{m_id}",
+                    value=member['name'],
+                    label_visibility="collapsed"  # Makes it more compact
+                )
+            
+            with col2: 
+                st.button(
+                    "🗑️",  # Icon only makes it smaller
+                    key=f"delete_{m_id}",
+                    use_container_width=False,
+                    type="secondary",  # Smaller secondary button style
+                    on_click=delete_member,
+                    args=(m_id,)
+                )
+            # Auto-update name when changed
             if new_name != member['name']:
-                # Update the name in the list
                 member['name'] = new_name.strip()
-                st.rerun()  # Rerun to update name
-
-            st.button(
-                f"🗑️ Delete Member {i+1}",
-                key=f"delete_{m_id}",
-                on_click=delete_member,
-                args=(m_id,)
-            )
+                st.rerun() 
+            
         if st.button('➕ Add New Member', type='primary'):
             st.session_state.party_members.append({'id': str(uuid.uuid4()), 'name': None})
             st.rerun()
@@ -149,7 +157,7 @@ def process_chat():
                 ("system", "You are a helpful D&D adventure Q&A bot."),
                 ("user", "You are an expert in answering questions about a Dungeons and Dragons campaign described in provided documents. "
                 "The provided documents describe a campaign where the party members are {partymembers}. "
-                "Here are the relevant documents with a date and title from the character Brocc's perspective (sometimes in first person and sometimes in third person): "
+                "Here are the relevant documents with a date and title from the character Brocc's perspective (sometimes in first person and sometimes in third person): " # Need to add note taker parameter to session state, have user specify which character is the note taker, and use it here instead of "Brocc"
                 "{notes} \n\n Here is the question to answer. Base your answer only off of the provided documents, and no other extraneous material. "
                 "Do not provide references to the documents.: {question}")
             ])
