@@ -56,9 +56,7 @@ def process_journal_options():
     temp = [member['name'] for member in st.session_state.party_members]
     print(temp)
     with st.sidebar:
-        if st.button('➕ Add New Member', type='primary'):
-            st.session_state.party_members.append({'id': str(uuid.uuid4()), 'name': ""})
-
+        st.header("📜🪶 Journal Options")
         # 2. Iterate over the list party members
         for i, member in enumerate(st.session_state.party_members):
             m_id = member['id']
@@ -69,9 +67,10 @@ def process_journal_options():
                 key=f"input_{m_id}", 
                 value=member['name']
             )
-            
-            # Update the name in the list
-            member['name'] = new_name.strip()
+            if new_name != member['name']:
+                # Update the name in the list
+                member['name'] = new_name.strip()
+                st.rerun()  # Rerun to update name
 
             st.button(
                 f"🗑️ Delete Member {i+1}",
@@ -79,6 +78,9 @@ def process_journal_options():
                 on_click=delete_member,
                 args=(m_id,)
             )
+        if st.button('➕ Add New Member', type='primary'):
+            st.session_state.party_members.append({'id': str(uuid.uuid4()), 'name': None})
+            st.rerun()
         
     note_document = None
     if has_subfolders(st.session_state.database_directory) and (st.session_state.reupload_key == False):
