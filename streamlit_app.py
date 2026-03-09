@@ -9,6 +9,7 @@ import os
 import streamlit as st
 import streamlit_notify as stn
 import numpy as np
+import uuid
 
 #import local modules
 import src.utils.CreateDatabase as CreateDatabase
@@ -27,7 +28,8 @@ def init_state_variables():
         st.session_state.messages = []
         st.session_state.buttoninfo = []
         st.session_state.button_key = 0
-        st.session_state.party_members = []
+        st.session_state.party_members = [{'id': str(uuid.uuid4()), 'name': ""}]
+        st.session_state.delete_index = None
 
 def process_model_options():
     # Find local ollama models 
@@ -44,31 +46,40 @@ def process_model_options():
             st.session_state.model_chosen = None
             st.session_state.model_temperature = None
 
-def process_journal_options():
-    with st.sidebar:
-        st.header("🎭 Campaign Party")
-        
-        # Initialize multi-line text area for party members (stored in session state)
-        if "party_members" not in st.session_state:
-            st.session_state.party_members = ["Brocc", "Evryn", "Gwendolyn (Gwen)"]
-        
-        # Display and allow editing party member names
-        party_member_raw_input = st.text_area(
-            "Party Members",
-            "\n".join(st.session_state.party_members),
-            height=150,
-            help="Enter campaign member names, one per line"
-        )
-        if party_member_raw_input:
-            parsed_party_members = [member.strip() for member in party_member_raw_input.split("\n") if member.strip()]
+def delete_member(member_id):
+    # Filter list to remove the specific ID
+    st.session_state.party_members = [
+        m for m in st.session_state.party_members if m['id'] != member_id
+    ]
 
-            # Update session state with new party members from user input
-            if parsed_party_members != st.session_state.party_members:
-                st.session_state.party_members = parsed_party_members
-                
-                # Show confirmation toast notification when updated
-                with st.toast("✨ Party members updated!", icon="🧙‍♂️"):
-                    pass  # Optional: Add more details here
+def process_journal_options():
+    temp = [member['name'] for member in st.session_state.party_members]
+    print(temp)
+    with st.sidebar:
+        if st.button('➕ Add New Member', type='primary'):
+            st.session_state.party_members.append({'id': str(uuid.uuid4()), 'name': ""})
+
+        # 2. Iterate over the list party members
+        for i, member in enumerate(st.session_state.party_members):
+            m_id = member['id']
+            
+            # Use the UNIQUE ID as the key, not the index 'i'
+            new_name = st.text_input(
+                f"Member {i+1}",
+                key=f"input_{m_id}", 
+                value=member['name']
+            )
+            
+            # Update the name in the list
+            member['name'] = new_name.strip()
+
+            st.button(
+                f"🗑️ Delete Member {i+1}",
+                key=f"delete_{m_id}",
+                on_click=delete_member,
+                args=(m_id,)
+            )
+        
     note_document = None
     if has_subfolders(st.session_state.database_directory) and (st.session_state.reupload_key == False):
         st.session_state.notes_uploaded = True
@@ -104,6 +115,8 @@ def process_journal_options():
             with st.toast("❌ Notes processing failed! Check disk space or existence of journal.", icon="🧙‍♂️"):
                 pass  # Optional: Add more details here
 
+    
+
 def update_message_history():
     i = 0 #  represents index of references, each index can have multiple references and there is one per bot response
     for message in st.session_state.messages:  
@@ -137,7 +150,7 @@ def process_chat():
             prompt = ChatPromptTemplate.from_messages([
                 ("system", "You are a helpful D&D adventure Q&A bot."),
                 ("user", "You are an expert in answering questions about a Dungeons and Dragons campaign described in provided documents. "
-                "The provided documents describe a campaign where the main protagonists are {partymembers}. "
+                "The provided documents describe a campaign where the party members are {partymembers}. "
                 "Here are the relevant documents with a date and title from the character Brocc's perspective (sometimes in first person and sometimes in third person): "
                 "{notes} \n\n Here is the question to answer. Base your answer only off of the provided documents, and no other extraneous material. "
                 "Do not provide references to the documents.: {question}")
@@ -151,7 +164,8 @@ def process_chat():
 
             # Pass user query plus relevant notes to the model and get response if relevant notes are found
             if len(notes) > 0:
-                response = chain.invoke({"question": user_question, "partymembers": st.session_state.party_members, "notes": notes})  # Pass the query and relevant note documents
+                members = [member['name'] for member in st.session_state.party_members]
+                response = chain.invoke({"question": user_question, "partymembers": members, "notes": notes})  # Pass the query and relevant note documents
                 placeholder.empty()
                 references_found = True
                 with st.chat_message("assistant", avatar="🧙‍♂️"):
