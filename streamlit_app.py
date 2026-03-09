@@ -27,21 +27,48 @@ def init_state_variables():
         st.session_state.messages = []
         st.session_state.buttoninfo = []
         st.session_state.button_key = 0
+        st.session_state.party_members = []
 
 def process_model_options():
     # Find local ollama models 
     local_model_names = [model.model for model in ollama.list().models]
     # Generate sidebar options
-    sidebar_model_select = st.sidebar.selectbox("Select Model", local_model_names, index = None, placeholder = "Select local LLM...")
-    sidebar_model_temperature = st.sidebar.selectbox("Select Model Temperature", np.round(np.linspace(0.1, 1.0, 10), 1), index = None, placeholder = "Select local LLM Temperature...")
-    if ((sidebar_model_select is not None) and (sidebar_model_temperature is not None)):
-        st.session_state.model_chosen = load_model(sidebar_model_select)
-        st.session_state.model_chosen.temperature = sidebar_model_temperature
-    else:
-        st.session_state.model_chosen = None
-        st.session_state.model_temperature = None
+    with st.sidebar:
+        st.header("🔧 Model Options")
+        sidebar_model_select = st.sidebar.selectbox("Select Model", local_model_names, index = None, placeholder = "Select local LLM...")
+        sidebar_model_temperature = st.sidebar.selectbox("Select Model Temperature", np.round(np.linspace(0.1, 1.0, 10), 1), index = None, placeholder = "Select local LLM Temperature...")
+        if ((sidebar_model_select is not None) and (sidebar_model_temperature is not None)):
+            st.session_state.model_chosen = load_model(sidebar_model_select)
+            st.session_state.model_chosen.temperature = sidebar_model_temperature
+        else:
+            st.session_state.model_chosen = None
+            st.session_state.model_temperature = None
 
 def process_journal_options():
+    with st.sidebar:
+        st.header("🎭 Campaign Party")
+        
+        # Initialize multi-line text area for party members (stored in session state)
+        if "party_members" not in st.session_state:
+            st.session_state.party_members = ["Brocc", "Evryn", "Gwendolyn (Gwen)"]
+        
+        # Display and allow editing party member names
+        party_member_raw_input = st.text_area(
+            "Party Members",
+            "\n".join(st.session_state.party_members),
+            height=150,
+            help="Enter campaign member names, one per line"
+        )
+        if party_member_raw_input:
+            parsed_party_members = [member.strip() for member in party_member_raw_input.split("\n") if member.strip()]
+
+            # Update session state with new party members from user input
+            if parsed_party_members != st.session_state.party_members:
+                st.session_state.party_members = parsed_party_members
+                
+                # Show confirmation toast notification when updated
+                with st.toast("✨ Party members updated!", icon="🧙‍♂️"):
+                    pass  # Optional: Add more details here
     note_document = None
     if has_subfolders(st.session_state.database_directory) and (st.session_state.reupload_key == False):
         st.session_state.notes_uploaded = True
@@ -69,10 +96,13 @@ def process_journal_options():
         #start data upload and database creation animation
         st.session_state.notes_uploaded = create_database_handler(note_document, text_splitter, vector_store)
         if(st.session_state.notes_uploaded == True):
-            stn.success("Journal processed successfully!")
+            # Show confirmation toast notification when updated
+            with st.toast("📜🪶 Notes processed successfully!", icon="🧙‍♂️"):
+                pass  # Optional: Add more details here
             st.rerun()
         else:
-            stn.error("Failed to vectorize database. Check file existence or disk space.")
+            with st.toast("❌ Notes processing failed! Check disk space or existence of journal.", icon="🧙‍♂️"):
+                pass  # Optional: Add more details here
 
 def update_message_history():
     i = 0 #  represents index of references, each index can have multiple references and there is one per bot response
@@ -107,7 +137,7 @@ def process_chat():
             prompt = ChatPromptTemplate.from_messages([
                 ("system", "You are a helpful D&D adventure Q&A bot."),
                 ("user", "You are an expert in answering questions about a Dungeons and Dragons campaign described in provided documents. "
-                "The provided documents describe a campaign where the main protagonists are Brocc, Evryn, and Gwendolyn(Gwen). "
+                "The provided documents describe a campaign where the main protagonists are {partymembers}. "
                 "Here are the relevant documents with a date and title from the character Brocc's perspective (sometimes in first person and sometimes in third person): "
                 "{notes} \n\n Here is the question to answer. Base your answer only off of the provided documents, and no other extraneous material. "
                 "Do not provide references to the documents.: {question}")
@@ -121,7 +151,7 @@ def process_chat():
 
             # Pass user query plus relevant notes to the model and get response if relevant notes are found
             if len(notes) > 0:
-                response = chain.invoke({"question": user_question, "notes": notes})  # Pass the query and relevant note documents
+                response = chain.invoke({"question": user_question, "partymembers": st.session_state.party_members, "notes": notes})  # Pass the query and relevant note documents
                 placeholder.empty()
                 references_found = True
                 with st.chat_message("assistant", avatar="🧙‍♂️"):
