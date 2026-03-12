@@ -49,6 +49,9 @@ def process_model_options():
 def process_journal_options():
     with st.sidebar:
         st.header("📜🪶 Journal Options")
+
+        #check if any note taker is already selected
+        any_note_taker_selected = any(member.get('note_taker', False) for member in st.session_state.party_members)
         # Iterate over the list party members
         for i, member in enumerate(st.session_state.party_members):
             m_id = member['id']
@@ -65,6 +68,14 @@ def process_journal_options():
                 )
             
             with col2: 
+                is_disabled = any_note_taker_selected and not member.get('note_taker', False)
+                st.checkbox(f"Note Taker", key=f"note_taker_{m_id}", help="Check if this party member is the note taker for processed notes.", on_change=toggle_note_taker, args=(m_id,), disabled=is_disabled)
+                # Auto-update name when changed
+                if new_name != member['name']:
+                    member['name'] = new_name.strip()
+                    st.rerun()
+            
+            with col3:
                 st.button(
                     "🗑️",  # Icon only makes it smaller
                     key=f"delete_{m_id}",
@@ -73,12 +84,6 @@ def process_journal_options():
                     on_click=delete_member,
                     args=(m_id,)
                 )
-            with col3:
-                st.checkbox(f"Note Taker", key=f"note_taker_{m_id}", help="Check if this party member is the note taker for processed notes.", on_change=toggle_note_taker, args=(m_id,))
-            # Auto-update name when changed
-            if new_name != member['name']:
-                member['name'] = new_name.strip()
-                st.rerun() 
             
         if st.button('➕ Add New Member', type='primary'):
             st.session_state.party_members.append({'id': str(uuid.uuid4()), 'name': None})
