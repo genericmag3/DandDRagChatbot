@@ -9,6 +9,8 @@ import os
 import streamlit as st
 import streamlit_notify as stn
 import numpy as np
+import uuid
+import string
 
 #import local modules
 import src.utils.CreateDatabase as CreateDatabase
@@ -27,21 +29,67 @@ def init_state_variables():
         st.session_state.messages = []
         st.session_state.buttoninfo = []
         st.session_state.button_key = 0
+        st.session_state.party_members = [{'id': str(uuid.uuid4()), 'name': "", 'note_taker': False}]
+        st.session_state.delete_index = None
 
 def process_model_options():
     # Find local ollama models 
     local_model_names = [model.model for model in ollama.list().models]
     # Generate sidebar options
-    sidebar_model_select = st.sidebar.selectbox("Select Model", local_model_names, index = None, placeholder = "Select local LLM...")
-    sidebar_model_temperature = st.sidebar.selectbox("Select Model Temperature", np.round(np.linspace(0.1, 1.0, 10), 1), index = None, placeholder = "Select local LLM Temperature...")
-    if ((sidebar_model_select is not None) and (sidebar_model_temperature is not None)):
-        st.session_state.model_chosen = load_model(sidebar_model_select)
-        st.session_state.model_chosen.temperature = sidebar_model_temperature
-    else:
-        st.session_state.model_chosen = None
-        st.session_state.model_temperature = None
+    with st.sidebar:
+        st.header("🔧 Model Options")
+        sidebar_model_select = st.sidebar.selectbox("Select Model", local_model_names, index = None, placeholder = "Select local LLM...")
+        sidebar_model_temperature = st.sidebar.selectbox("Select Model Temperature", np.round(np.linspace(0.1, 1.0, 10), 1), index = None, placeholder = "Select local LLM Temperature...")
+        if ((sidebar_model_select is not None) and (sidebar_model_temperature is not None)):
+            st.session_state.model_chosen = load_model(sidebar_model_select)
+            st.session_state.model_chosen.temperature = sidebar_model_temperature
+        else:
+            st.session_state.model_chosen = None
+            st.session_state.model_temperature = None
 
 def process_journal_options():
+    with st.sidebar:
+        st.header("📜🪶 Journal Options")
+
+        #check if any note taker is already selected
+        any_note_taker_selected = any(member.get('note_taker', False) for member in st.session_state.party_members)
+        # Iterate over the list party members
+        for i, member in enumerate(st.session_state.party_members):
+            m_id = member['id']
+            
+            # Name input and delete button columns
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:  
+                new_name = st.text_input(
+                    f"Member {i+1}",
+                    key=f"input_{m_id}",
+                    value=member['name'],
+                    label_visibility="collapsed"  # Makes it more compact
+                )
+            
+            with col2: 
+                is_disabled = any_note_taker_selected and not member.get('note_taker', False)
+                st.checkbox(f"Note Taker", key=f"note_taker_{m_id}", help="Check if this party member is the note taker for processed notes.", on_change=toggle_note_taker, args=(m_id,), disabled=is_disabled)
+                # Auto-update name when changed
+                if new_name != member['name']:
+                    member['name'] = new_name.strip()
+                    st.rerun()
+            
+            with col3:
+                st.button(
+                    "🗑️",  # Icon only makes it smaller
+                    key=f"delete_{m_id}",
+                    use_container_width=False,
+                    type="secondary",  # Smaller secondary button style
+                    on_click=delete_member,
+                    args=(m_id,)
+                )
+            
+        if st.button('➕ Add New Member', type='primary'):
+            st.session_state.party_members.append({'id': str(uuid.uuid4()), 'name': None})
+            st.rerun()
+        
     note_document = None
     if has_subfolders(st.session_state.database_directory) and (st.session_state.reupload_key == False):
         st.session_state.notes_uploaded = True
@@ -69,10 +117,31 @@ def process_journal_options():
         #start data upload and database creation animation
         st.session_state.notes_uploaded = create_database_handler(note_document, text_splitter, vector_store)
         if(st.session_state.notes_uploaded == True):
-            stn.success("Journal processed successfully!")
+            # Show confirmation toast notification when updated
+            with st.toast("📜🪶 Notes processed successfully!", icon="🧙‍♂️"):
+                pass  # Optional: Add more details here
             st.rerun()
         else:
-            stn.error("Failed to vectorize database. Check file existence or disk space.")
+            with st.toast("❌ Notes processing failed! Check disk space or existence of journal.", icon="🧙‍♂️"):
+                pass  # Optional: Add more details here
+
+def delete_member(member_id):
+    # Filter list to remove the specific ID
+    st.session_state.party_members = [
+        m for m in st.session_state.party_members if m['id'] != member_id
+    ]
+
+def toggle_note_taker(member_id):
+    # Find the member and toggle their note_taker status
+    if st.session_state['note_taker_' + member_id]:
+         for member in st.session_state.party_members:
+            if member['id'] == member_id:
+                member['note_taker'] = st.session_state['note_taker_' + member_id] 
+    else:
+        for member in st.session_state.party_members:
+            if member['id'] == member_id:
+                member['note_taker'] = False
+                break
 
 def update_message_history():
     i = 0 #  represents index of references, each index can have multiple references and there is one per bot response
@@ -105,12 +174,12 @@ def process_chat():
                 st_lottie(magic_spinner, height=200, key="custom_spinner")
 
             prompt = ChatPromptTemplate.from_messages([
-                ("system", "You are a helpful D&D adventure Q&A bot."),
-                ("user", "You are an expert in answering questions about a Dungeons and Dragons campaign described in provided documents. "
-                "The provided documents describe a campaign where the main protagonists are Brocc, Evryn, and Gwendolyn(Gwen). "
-                "Here are the relevant documents with a date and title from the character Brocc's perspective (sometimes in first person and sometimes in third person): "
-                "{notes} \n\n Here is the question to answer. Base your answer only off of the provided documents, and no other extraneous material. "
-                "Do not provide references to the documents.: {question}")
+                ("system", "You are a helpful TTRPG adventure Q&A bot."),
+                ("user", "You are an expert in answering questions about a TTRPG campaign described in provided documents. "
+                "The provided documents describe a campaign where the party members are {partymembers}. "
+                "Here are the relevant documents from {notetaker}'s perspective (could be in first person or third person): {notes}"
+                "\n\n Here is the question to answer: {question}. Base your answer only off of the provided documents and no extranious information. Do not provide references to the documents."
+                )
             ])
             notes = st.session_state.document_retriever.invoke(user_question)
             chain = (
@@ -121,7 +190,13 @@ def process_chat():
 
             # Pass user query plus relevant notes to the model and get response if relevant notes are found
             if len(notes) > 0:
-                response = chain.invoke({"question": user_question, "notes": notes})  # Pass the query and relevant note documents
+                members = [member['name'] for member in st.session_state.party_members]
+                if len(members) > 1:
+                    formatted_members = ', '.join(members[:-1]) + ', and ' + members[-1]
+                else:
+                    formatted_members = ', '.join(members)
+                note_taker = [member['name'] for member in st.session_state.party_members if member.get('note_taker', False)][0]
+                response = chain.invoke({"question": user_question, "partymembers": formatted_members, "notes": notes, "notetaker": note_taker[0]})  # Pass the query relevant note documents, party member names, and note taker name to the model
                 placeholder.empty()
                 references_found = True
                 with st.chat_message("assistant", avatar="🧙‍♂️"):
@@ -212,15 +287,15 @@ def reference_button(content):
 
 # App execution
 
+#init state variables
 init_state_variables()
 
+#init streamlit UI
+st.title("TTRPG Journal Q&A Chatbot 🧙‍♂️")
+
+st.info("This app takes your notes from your TTRPG campaign and passes your question along with relevant context from your notes to the local LLM. It does not permenantly store your notes or chat history or use them to train any model. Please consult provided references as the AI may hallucinate.")
+
 if __name__ == "__main__":
-
-    # Initialize Streamlit UI 
-
-    st.title("TTRPG Journal Q&A Chatbot 🧙‍♂️")
-
-    st.info("This app takes your notes from your TTRPG campaign and passes your question along with relevant context from your notes to the local LLM. It does not permenantly store your notes or chat history or use them to train any model. Please consult provided references as the AI may hallucinate.")
 
     # Display queued notifications and clear old ones
     stn.notify()
@@ -228,7 +303,7 @@ if __name__ == "__main__":
     # Process model options provided by user in sidebar
     process_model_options() 
 
-    # Process journal provided by user
+    # Process journal options provided by user 
     process_journal_options()
 
     # Update chat history in UI

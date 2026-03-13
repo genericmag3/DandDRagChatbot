@@ -12,3 +12,7 @@ Notes.csv
 __pycache__/CreateDatabase.cpython-310.pyc
 *.docx
 *.txt
+src/utils/__pycache__/
+database/
+data/
+__pycache__/
