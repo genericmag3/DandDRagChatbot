@@ -10,6 +10,7 @@ import streamlit as st
 import streamlit_notify as stn
 import numpy as np
 import uuid
+import string
 
 #import local modules
 import src.utils.CreateDatabase as CreateDatabase
@@ -173,12 +174,12 @@ def process_chat():
                 st_lottie(magic_spinner, height=200, key="custom_spinner")
 
             prompt = ChatPromptTemplate.from_messages([
-                ("system", "You are a helpful D&D adventure Q&A bot."),
-                ("user", "You are an expert in answering questions about a Dungeons and Dragons campaign described in provided documents. "
+                ("system", "You are a helpful TTRPG adventure Q&A bot."),
+                ("user", "You are an expert in answering questions about a TTRPG campaign described in provided documents. "
                 "The provided documents describe a campaign where the party members are {partymembers}. "
-                "Here are the relevant documents from {notetaker}'s perspective (could be in first person or third person): " # Need to add note taker parameter to session state, have user specify which character is the note taker, and use it here instead of "Brocc"
-                "{notes} \n\n Here is the question to answer. Base your answer only off of the provided documents, and no other extraneous material. "
-                "Do not provide references to the documents.: {question}")
+                "Here are the relevant documents from {notetaker}'s perspective (could be in first person or third person): {notes}"
+                "\n\n Here is the question to answer: {question}. Base your answer only off of the provided documents and no extranious information. Do not provide references to the documents."
+                )
             ])
             notes = st.session_state.document_retriever.invoke(user_question)
             chain = (
@@ -190,8 +191,12 @@ def process_chat():
             # Pass user query plus relevant notes to the model and get response if relevant notes are found
             if len(notes) > 0:
                 members = [member['name'] for member in st.session_state.party_members]
-                note_taker = [member['name'] for member in st.session_state.party_members if member['note_taker']]
-                response = chain.invoke({"question": user_question, "partymembers": members, "notes": notes, "notetaker": note_taker[0]})  # Pass the query and relevant note documents
+                if len(members) > 1:
+                    formatted_members = ', '.join(members[:-1]) + ', and ' + members[-1]
+                else:
+                    formatted_members = ', '.join(members)
+                note_taker = [member['name'] for member in st.session_state.party_members if member.get('note_taker', False)][0]
+                response = chain.invoke({"question": user_question, "partymembers": formatted_members, "notes": notes, "notetaker": note_taker[0]})  # Pass the query relevant note documents, party member names, and note taker name to the model
                 placeholder.empty()
                 references_found = True
                 with st.chat_message("assistant", avatar="🧙‍♂️"):
