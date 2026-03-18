@@ -1,5 +1,3 @@
-from xml.parsers.expat import model
-
 from langchain_ollama import OllamaLLM
 import ollama
 from langchain_core.prompts import ChatPromptTemplate
@@ -12,11 +10,10 @@ import streamlit as st
 import streamlit_notify as stn
 import numpy as np
 import uuid
-import string
 import json
 
 #import local modules
-import utils.CreateDatabase as CreateDatabase
+from ..utils import CreateDatabase as CreateDatabase
 
 class TTRPGChatbot:
     def __init__(self):
@@ -67,7 +64,7 @@ class TTRPGChatbot:
     def __process_model_options(self):
         # Find local ollama models 
         local_model_names = [model.model for model in ollama.list().models]
-        temperature_options = np.round(np.linspace(0.1, 1.0, s10), 1)
+        temperature_options = np.round(np.linspace(0.1, 1.0, 10), 1)
         # Generate sidebar options
         with st.sidebar:
             st.header("🔧 Model Options")
@@ -81,6 +78,16 @@ class TTRPGChatbot:
             else:
                 st.session_state.model_name = None
                 st.session_state.model_temperature = None
+    
+    def __save_user_data(self):
+        user_data = {
+            "model_name": st.session_state.model_name,
+            "model_temperature": st.session_state.model_temperature,
+            "notes_uploaded": st.session_state.notes_uploaded,
+            "party_members": st.session_state.party_members
+        }
+        with open("data/user_data.json", "w") as f:
+            json.dump(user_data, f)
 
     def __process_journal_options(self):
         with st.sidebar:
@@ -289,6 +296,7 @@ class TTRPGChatbot:
         for word in response.split(" "):
             yield word + " "
             time.sleep(0.02) 
+
     # Define Streamlit dialog for reference content display
     @st.dialog("Reference Content")
     def __reference_button(self, content):
@@ -313,7 +321,7 @@ class TTRPGChatbot:
                     break
 
     @st.cache_resource
-    def __load_model(self,modelname):
+    def __load_model(_self,modelname):
         model = OllamaLLM(model=modelname)
         return model
     
@@ -322,11 +330,7 @@ class TTRPGChatbot:
         st.info("This app takes your notes from your TTRPG campaign and passes your question along with relevant context from your notes to the local LLM. It does not permanently store your notes or chat history or use them to train any model. Please consult provided references as the AI may hallucinate.")
 
     def run(self):
-        st.title("TTRPG Journal Q&A Chatbot 🧙‍♂️")
-        st.info("This app takes your notes from your TTRPG campaign and passes your question along with relevant context from your notes to the local LLM. It does not permanently store your notes or chat history or use them to train any model. Please consult provided references as the AI may hallucinate.")
-
-        selected_model = self.process_model_options()
-        selected_journal = self.process_journal_options()
-
-        if selected_model and selected_journal:
-            self.process_chat()
+        self.__process_model_options()
+        self.__process_journal_options()
+        self.__update_message_history()
+        self.__process_chat()
