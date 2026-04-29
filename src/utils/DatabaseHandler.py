@@ -73,7 +73,7 @@ class DatabaseHandler:
                 )
         self.document_retriever = self.vector_store.as_retriever(
             search_type="similarity_score_threshold",
-            search_kwargs={"k": 9, "score_threshold": 0.1}
+            search_kwargs={"k": 10, "score_threshold": 0.1}
             )
 
     def __convert_document_into_dataframe(self, document, databasedir):
@@ -96,12 +96,12 @@ class DatabaseHandler:
             text_content = '\n'.join(document_text)
 
             # Parse text content into same dataframe structure
-            df = self.__parse_journal_text(text_content, databasedir)
+            df = self.__parse_journal_text(text_content)
         # simple text document
         else:
             # Read the text file content and parse it into the same dataframe structure
             stringio = io.StringIO(document.getvalue().decode("utf-8"))
-            df = self.__parse_journal_text(stringio.read(), databasedir)
+            df = self.__parse_journal_text(stringio.read())
         
         return df
 

@@ -18,11 +18,12 @@ class TTRPGChatbot:
         self._DATABASEDIR = "data//chrome_langchain_db"
         self._USERDATAFILE = "data//user_data.json" 
         self._PROMPTEMPLATE = ChatPromptTemplate.from_messages([
-                                ("system", "You are a helpful TTRPG adventure Q&A bot."),
-                                ("user", "You are an expert in answering questions about a TTRPG campaign described in provided documents. "
+                                ("system", "You are an expert in answering questions about a TTRPG campaign described in provided documents. "
                                 "The provided documents describe a campaign where the party members (player characters) are {partymembers}. "
                                 "Here are the relevant documents from {notetaker}'s perspective (could be in first person or third person): {notes}"
-                                "\n\n Here is the question to answer: {question}. Base your answer only off of the provided documents and no extranious information. Do not provide references to the documents."
+                                "/n Base your answers only off of the provided documents. Do not use extranious information to answer the question. Do not provide references to the documents."
+                                ),
+                                ("user", "{question}"
                                 )
                             ])
 
@@ -39,7 +40,7 @@ class TTRPGChatbot:
 
     def __init_state_variables(self):
         # Initialize session state variables for model, database upload handling, and document retriever for storing in memory to avoid reload
-        if ("reupload_key" not in st.session_state) or ("model_name" not in st.session_state) or ("model_temperature" not in st.session_state) or ("document_retriever" not in st.session_state) or ("notes_uploaded" not in st.session_state) or ("messages" not in st.session_state) or ("buttoninfo" not in st.session_state) or ("button_key" not in st.session_state):
+        if ("reupload_key" not in st.session_state) or ("model_name" not in st.session_state) or ("model_temperature" not in st.session_state) or ("notes_uploaded" not in st.session_state) or ("messages" not in st.session_state) or ("buttoninfo" not in st.session_state) or ("button_key" not in st.session_state) or ("party_members" not in st.session_state) or ("delete_index" not in st.session_state):
             if os.path.isfile(self._USERDATAFILE):
                 try:
                     with open(self._USERDATAFILE, "r") as f:
@@ -57,9 +58,8 @@ class TTRPGChatbot:
                 st.session_state.button_key = 0
                 st.session_state.party_members = user_data.get("party_members")
                 st.session_state.delete_index = None
-                #st.session_state.model = self.__load_model(str(st.session_state.model_name))
-                if st.session_state.model_name is not None:
-                    self.llmhandler.load_model(str(st.session_state.model_name))
+                if st.session_state.model_name is not None and st.session_state.model_temperature:
+                    self.llmhandler.load_model(str(st.session_state.model_name), st.session_state.model_temperature)
             # 1st run or missing user options data file, initialize session state variables to default values
             else:
                 st.session_state.reupload_key = 0
@@ -71,7 +71,6 @@ class TTRPGChatbot:
                 st.session_state.button_key = 0
                 st.session_state.party_members = [{'id': str(uuid.uuid4()), 'name': "", 'note_taker': False}]
                 st.session_state.delete_index = None
-                st.session_state.model = None
         
         return True
 
@@ -82,13 +81,19 @@ class TTRPGChatbot:
         # Generate sidebar options
         with st.sidebar:
             st.header("🔧 Model Options")
-            sidebar_model_select = st.sidebar.selectbox("Select Model", local_model_names, placeholder = "Select local LLM...", index = local_model_names.index(st.session_state.model_name) if st.session_state.model_name in local_model_names else None)
-            sidebar_model_temperature = st.sidebar.selectbox("Select Model Temperature", temperature_options, index = list(temperature_options).index(st.session_state.model_temperature) if st.session_state.model_temperature in temperature_options else None, placeholder = "Select local LLM Temperature...", )
+            sidebar_model_select = st.sidebar.selectbox("Select Model", local_model_names, 
+                                                        placeholder="Select local LLM...", 
+                                                        index=local_model_names.index(st.session_state.model_name) if st.session_state.model_name in local_model_names else None)
+            sidebar_model_temperature = st.sidebar.slider("Select Model Temperature", 
+                                                        min_value=0.0, 
+                                                        max_value=1.0, 
+                                                        value=st.session_state.model_temperature if st.session_state.model_temperature is not None else 0.7, 
+                                                        step=0.1, 
+                                                        key="model_temperature_slider")
             if ((sidebar_model_select is not None) and (sidebar_model_temperature is not None)):
                 st.session_state.model_name = sidebar_model_select
-                #st.session_state.model = self.__load_model(sidebar_model_select)
-                self.llmhandler.load_model(sidebar_model_select)
                 st.session_state.model_temperature = sidebar_model_temperature
+                self.llmhandler.load_model(sidebar_model_select, sidebar_model_temperature)
                 self.__save_user_data()
             else:
                 st.session_state.model_name = None
@@ -135,7 +140,7 @@ class TTRPGChatbot:
                 
                 with col3:
                     st.button(
-                        "🗑️",  # Icon only makes it smaller
+                        "🗑️",
                         key=f"delete_{m_id}",
                         use_container_width=False,
                         type="secondary",  # Smaller secondary button style
@@ -144,7 +149,7 @@ class TTRPGChatbot:
                     )
                 
             if st.button('➕ Add New Member', type='primary'):
-                st.session_state.party_members.append({'id': str(uuid.uuid4()), 'name': None}) # Can be functionalized
+                st.session_state.party_members.append({'id': str(uuid.uuid4()), 'name': None, 'note_taker': False}) 
                 st.rerun()
             
         note_document = None
@@ -202,7 +207,6 @@ class TTRPGChatbot:
                 progress = next(gen)
                 vectorization_progress.progress(progress / 100, text= progress_text + f"{progress:.1f}%")
             except StopIteration as e:
-                # This is where your 'return True' or 'return False' from the generator lives
                 returnCode = e.value
                 animationplaceholder.empty()
                 return returnCode
