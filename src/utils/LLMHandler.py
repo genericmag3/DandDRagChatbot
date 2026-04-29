@@ -2,9 +2,8 @@ from langchain_ollama import OllamaLLM
 from langchain.schema.output_parser import StrOutputParser
 import ollama
 
-
 class LLMHandler:
-    def __init__(self):
+    def __init__(self): 
         self.currnet_model = None
         self.availble_models = ollama.list().models
         pass
@@ -12,11 +11,11 @@ class LLMHandler:
     def get_available_models(self):
         return self.availble_models
     
-    def load_model(self, model_name):
+    def load_model(self, model_name, model_temperature):
         temp_model = self.currnet_model
         for item in self.availble_models:
             if item['model'] == model_name:
-                self.currnet_model = OllamaLLM(model=model_name)
+                self.currnet_model = OllamaLLM(model=model_name, temperature=model_temperature)
         if self.currnet_model == temp_model:
             raise ValueError(f"Model {model_name} not found in local ollama list. Please select an installed model or download it.")
     
